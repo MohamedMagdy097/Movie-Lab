@@ -175,73 +175,51 @@ export const translationRouter = createRouter({
   fetchContent: publicProcedure
     .input(
       z.object({
-        url: z.string().min(1, "URL is required"),
-        targetLanguage: z.string().min(1, "Target language is required"),
+        url: z.string().url(),
       })
     )
     .query(async ({ input }) => {
-      console.log(`🔄 Fetching website content from: ${input.url}`);
+      const { url } = input;
+      return await fetchWebsiteContent(url);
+    }),
 
-      try {
-        const { html } = await fetchWebsiteContent(input.url);
-        console.log("✅ Website content successfully fetched.");
-
-        // Extract translatable text
-        const $ = cheerio.load(html);
-        const elements = $("h1, h2, h3, p, li, span, div").toArray();
-
-        for (const el of elements) {
-          const originalText = $(el).text().trim();
-          if (!originalText) continue;
-
-          try {
-            const translatedText = await translateSingleChunk(
-              originalText,
-              input.targetLanguage
-            );
-            $(el).text(translatedText);
-          } catch (err) {
-            console.error("❌ Translation error:", err);
-          }
-        }
-
-        // Return modified HTML
-        const translatedHtml = $.html();
-        return { html: translatedHtml };
-      } catch (error) {
-        console.error("🚨 Failed to fetch website:", error);
-        throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: "Failed to fetch website content",
-        });
-      }
+  translateText: publicProcedure
+    .input(
+      z.object({
+        text: z.string(),
+        targetLanguage: z.string(),
+        iframeUrl: z.string().optional(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { text, targetLanguage } = input;
+      const translatedText = await translateSingleChunk(text, targetLanguage);
+      return { translatedText };
     }),
 
   translateChunk: publicProcedure
     .input(
       z.object({
-        text: z.string().min(1, "Text content cannot be empty"),
-        targetLanguage: z.string().min(2, "Target language code is required"),
+        chunk: z.object({
+          id: z.string(),
+          text: z.string(),
+          tag: z.string(),
+          html: z.string(),
+        }),
+        targetLanguage: z.string(),
       })
     )
     .mutation(async ({ input }) => {
-      console.log(
-        `🔄 Translating chunk: "${input.text}" to ${input.targetLanguage}`
+      const { chunk, targetLanguage } = input;
+      const translatedText = await translateSingleChunk(
+        chunk.text,
+        targetLanguage
       );
-
-      try {
-        const translatedText = await translateSingleChunk(
-          input.text,
-          input.targetLanguage
-        );
-        console.log(`✅ Translated: "${input.text}" → "${translatedText}"`);
-        return { translatedText };
-      } catch (error) {
-        console.error("🚨 Translation API Error:", error);
-        throw new TRPCError({
-          code: "INTERNAL_SERVER_ERROR",
-          message: "Translation failed",
-        });
-      }
+      return {
+        id: chunk.id,
+        translatedText,
+        tag: chunk.tag,
+        html: chunk.html,
+      };
     }),
 });

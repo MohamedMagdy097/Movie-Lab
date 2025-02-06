@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { toast, Toaster } from "react-hot-toast";
 import {
   FiSettings,
@@ -38,7 +38,6 @@ const TARGET_LANGUAGES = [
 ];
 
 export function TranslationDashboard() {
-  // State for URL, language, loading, and other UI parts
   const [url, setUrl] = useState("");
   const [selectedLanguage, setSelectedLanguage] = useState(TARGET_LANGUAGES[0]);
   const [isLoading, setIsLoading] = useState(false);
@@ -48,74 +47,92 @@ export function TranslationDashboard() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [activeTab, setActiveTab] = useState("browser");
   const [proxyUrl, setProxyUrl] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [iframeUrl, setIframeUrl] = useState("");
 
-  // Reference to the iframe element
+  // Iframe ref
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Your TRPC mutation for translating a single chunk of text
-  const translateChunkMutation = trpc.translation.translateChunk.useMutation();
+  // TRPC translation
+  const translateTextMutation = trpc.translation.translateText.useMutation();
 
-  // New recursive function that traverses the document and translates only text nodes.
-  const translateTextNodesParallel = async (node: Node) => {
-    // Helper function to recursively collect text nodes
-    const getTextNodes = (node: Node): Node[] => {
-      let nodes: Node[] = [];
-      node.childNodes.forEach((child) => {
+  // Function to get text nodes from an element
+  const getTextNodes = (node: Node): Text[] => {
+    const textNodes: Text[] = [];
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => {
+        // Skip script and style tags
+        const parentNode = node.parentNode as HTMLElement;
         if (
-          child.nodeType === Node.TEXT_NODE &&
-          child.textContent &&
-          child.textContent.trim()
+          parentNode.tagName === "SCRIPT" ||
+          parentNode.tagName === "STYLE" ||
+          parentNode.tagName === "NOSCRIPT"
         ) {
-          nodes.push(child);
-        } else if (
-          child.nodeType === Node.ELEMENT_NODE &&
-          !["SCRIPT", "STYLE"].includes(child.nodeName)
-        ) {
-          nodes = nodes.concat(getTextNodes(child));
+          return NodeFilter.FILTER_REJECT;
         }
-      });
-      return nodes;
-    };
+        // Only accept non-empty text nodes
+        return node.textContent?.trim()
+          ? NodeFilter.FILTER_ACCEPT
+          : NodeFilter.FILTER_REJECT;
+      },
+    });
 
-    // Gather all text nodes under the given node
+    let node2;
+    while ((node2 = walker.nextNode())) {
+      textNodes.push(node2 as Text);
+    }
+    return textNodes;
+  };
+
+  // Batch translation function
+  const translateTextNodesParallel = async (node: Node) => {
     const textNodes = getTextNodes(node);
     const totalNodes = textNodes.length;
-    const batchSize = 100; // Adjust this number based on your needs
+    let processed = 0; // Counter to track completed translations
+    const batchSize = 50; // You can adjust this number based on performance
 
     for (let i = 0; i < totalNodes; i += batchSize) {
       const batch = textNodes.slice(i, i + batchSize);
+
+      // Process each node in the batch concurrently
       await Promise.all(
         batch.map(async (textNode) => {
           const originalText = textNode.textContent?.trim();
-          if (originalText) {
-            try {
-              // Send the translation request concurrently for each node in the batch
-              const { translatedText } =
-                await translateChunkMutation.mutateAsync({
-                  text: originalText,
-                  targetLanguage: selectedLanguage,
-                });
-              // Update the text node with the translated text
-              textNode.textContent =
-                textNode.textContent?.replace(originalText, translatedText) ||
-                translatedText;
-            } catch (error) {
-              console.error("Translation failed for text node:", error);
+          if (!originalText) return;
+
+          try {
+            // Immediately update the live DOM once translation completes
+            const { translatedText } = await translateTextMutation.mutateAsync({
+              text: originalText,
+              targetLanguage: selectedLanguage,
+              iframeUrl: iframeRef.current?.src,
+            });
+            if (textNode.parentNode) {
+              textNode.textContent = translatedText;
             }
+          } catch (error) {
+            console.error("Translation failed for text node:", error);
+          } finally {
+            // Update the counter and progress state immediately
+            processed++;
+            setProgress(Math.min((processed / totalNodes) * 100, 100));
           }
         })
       );
-      // Optionally update progress (e.g., update a progress bar)
-      setProgress(Math.min(100, ((i + batch.length) / totalNodes) * 100));
     }
   };
 
-  // Updated incrementalTranslate uses the recursive function instead of replacing entire elements.
-  const incrementalTranslate = async () => {
-    if (!iframeRef.current) return;
-    const iframeDoc = iframeRef.current.contentDocument;
+  // Handle translation
+  const handleTranslate = async () => {
+    const iframe = iframeRef.current;
+    if (!iframe || !iframe.contentWindow) {
+      toast.error("Iframe not loaded.");
+      return;
+    }
+
+    const iframeDoc = iframe.contentWindow.document;
     if (!iframeDoc) {
-      toast.error("Could not access iframe content.");
+      toast.error("Cannot access iframe document.");
       return;
     }
 
@@ -127,36 +144,79 @@ export function TranslationDashboard() {
 
     setIsLoading(true);
     try {
+      // Directly update the live body so each text node is translated and updated instantly.
       await translateTextNodesParallel(body);
       toast.success("Translation completed.");
     } catch (error) {
       console.error("Error during translation:", error);
-      toast.error("Translation encountered an error.");
+      toast.error("Translation error.");
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Handle the URL submission (with a basic URL validation)
+  // Handle iframe navigation
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
+    const handleIframeNavigation = () => {
+      try {
+        // Get the current URL from the iframe
+        const currentUrl = new URL(
+          iframe.contentWindow?.location.href || ""
+        ).searchParams.get("url");
+
+        if (currentUrl && currentUrl !== iframeUrl) {
+          setIframeUrl(currentUrl);
+        }
+      } catch (error) {
+        console.error("Failed to get iframe URL:", error);
+      }
+    };
+
+    iframe.addEventListener("load", handleIframeNavigation);
+    return () => iframe.removeEventListener("load", handleIframeNavigation);
+  }, [iframeUrl]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url) {
-      toast.error("Please enter a URL");
-      return;
-    }
+    setUrl(websiteUrl);
     try {
-      new URL(url);
+      const validated = new URL(websiteUrl);
+      setProxyUrl(
+        `/api/proxy?url=${encodeURIComponent(
+          validated.href
+        )}&executeScripts=true`
+      );
     } catch {
-      toast.error("Invalid URL. Example: https://example.com");
-      return;
+      toast.error("Invalid URL format");
     }
-    setIsLoading(true);
-    setProxyUrl(
-      `/api/proxy?url=${encodeURIComponent(url)}&executeScripts=true`
-    );
-    setIsLoading(false);
   };
 
+  // Modify handleIframeLoad to include URL update
+  const handleIframeLoad = async () => {
+    try {
+      await handleTranslate();
+
+      // Additional check for initial load
+      const iframeWindow = iframeRef.current?.contentWindow;
+      if (!iframeWindow) return;
+
+      const currentProxyUrl = iframeWindow.location.href;
+      const urlParams = new URLSearchParams(new URL(currentProxyUrl).search);
+      const originalUrl = urlParams.get("url");
+
+      if (originalUrl) {
+        const decodedUrl = decodeURIComponent(originalUrl);
+        if (decodedUrl !== url) {
+          setUrl(decodedUrl);
+        }
+      }
+    } catch (error) {
+      console.error("Error in iframe onLoad:", error);
+    }
+  };
   return (
     <div className={`min-h-screen ${isDarkMode ? "dark" : ""}`}>
       <div className="flex h-screen bg-gray-100 dark:bg-gray-900">
@@ -179,7 +239,8 @@ export function TranslationDashboard() {
                 setShowSettings(false);
               }}
             >
-              <FiGlobe className="mr-3" /> Browser Translation
+              <FiGlobe className="mr-3" />
+              Browser Translation
             </Button>
             <Button
               variant="ghost"
@@ -190,7 +251,8 @@ export function TranslationDashboard() {
                 setShowSettings(false);
               }}
             >
-              <FiClock className="mr-3" /> History
+              <FiClock className="mr-3" />
+              History
             </Button>
             <Button
               variant="ghost"
@@ -201,7 +263,8 @@ export function TranslationDashboard() {
                 setShowHistory(false);
               }}
             >
-              <FiSettings className="mr-3" /> Settings
+              <FiSettings className="mr-3" />
+              Settings
             </Button>
           </nav>
         </aside>
@@ -237,7 +300,7 @@ export function TranslationDashboard() {
             </div>
           </header>
 
-          {/* Render content based on the active tab */}
+          {/* Browser Translation */}
           {activeTab === "browser" && (
             <div className="p-4">
               <div className="rounded-lg border bg-card text-card-foreground shadow-sm">
@@ -246,8 +309,8 @@ export function TranslationDashboard() {
                   <form onSubmit={handleSubmit} className="flex-1 flex gap-2">
                     <input
                       type="url"
-                      value={url}
-                      onChange={(e) => setUrl(e.target.value)}
+                      value={websiteUrl}
+                      onChange={(e) => setWebsiteUrl(e.target.value)}
                       placeholder="Enter URL to translate..."
                       className="flex-1 bg-white border rounded-md px-3 py-2"
                     />
@@ -262,8 +325,9 @@ export function TranslationDashboard() {
                         </option>
                       ))}
                     </select>
-                    <Button onClick={incrementalTranslate} disabled={isLoading}>
-                      Translate
+                    {/* Just an icon button, no separate translate action. */}
+                    <Button variant="ghost" size="icon">
+                      <FiGlobe />
                     </Button>
                   </form>
                 </div>
@@ -274,39 +338,34 @@ export function TranslationDashboard() {
                     ref={iframeRef}
                     src={proxyUrl}
                     className="w-full h-screen border mt-4"
+                    onLoad={handleIframeLoad}
+                    sandbox="allow-same-origin allow-forms allow-scripts allow-modals allow-popups allow-downloads allow-top-navigation-by-user-activation"
+                    referrerPolicy="strict-origin-when-cross-origin"
                   />
                 )}
               </div>
             </div>
           )}
 
+          {/* Translation History */}
           {activeTab === "history" && showHistory && (
             <div className="p-4">
-              <TranslationHistory
-                isOpen={false}
-                setIsOpen={function (isOpen: boolean): void {
-                  throw new Error("Function not implemented.");
-                }}
-              />
+              <TranslationHistory isOpen={false} setIsOpen={() => null} />
             </div>
           )}
 
+          {/* Settings Panel */}
           {activeTab === "settings" && showSettings && (
             <div className="p-4">
               <SettingsPanel
                 isOpen={false}
-                setIsOpen={function (isOpen: boolean): void {
-                  throw new Error("Function not implemented.");
-                }}
-                onClose={function (): void {
-                  throw new Error("Function not implemented.");
-                }}
+                setIsOpen={() => null}
+                onClose={() => null}
               />
             </div>
           )}
         </main>
       </div>
-
       <Toaster />
     </div>
   );
