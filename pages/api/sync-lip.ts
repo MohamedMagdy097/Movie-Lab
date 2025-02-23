@@ -49,8 +49,12 @@ export default async function handler(
 
     console.log('Lip sync completed:', result.data);
 
+    // Extract the video URL from the result
+    const syncedVideoUrl = result.data.video.url;
+    console.log('Synced video URL:', syncedVideoUrl);
+    
     return res.status(200).json({
-      syncedVideo: result.data.video.url
+      url: syncedVideoUrl
     });
   } catch (error) {
     console.error('Error in lip sync:', error);

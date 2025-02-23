@@ -40,11 +40,19 @@ export default async function handler(
     });
     const page = await browser.newPage();
 
+    // Set up request interception to handle CORS
+    await page.setRequestInterception(true);
+    page.on('request', request => {
+      const headers = request.headers();
+      headers['Access-Control-Allow-Origin'] = '*';
+      request.continue({ headers });
+    });
+
     // Create HTML with video element
     await page.setContent(`
       <html>
         <body>
-          <video id="video" preload="auto" style="display: none;">
+          <video id="video" crossorigin="anonymous" preload="auto" style="display: none;">
             <source src="${videoUrl}" type="video/mp4">
           </video>
           <canvas id="canvas" style="display: none;"></canvas>
@@ -77,7 +85,7 @@ export default async function handler(
                     if (!ctx) throw new Error('Could not get canvas context');
                     
                     ctx.drawImage(video, 0, 0);
-                    const frameData = canvas.toDataURL('image/jpeg');
+                    const frameData = canvas.toDataURL('image/jpeg', 0.95);
                     
                     if (!frameData || frameData === 'data:,') {
                       reject(new Error('Failed to extract frame'));
