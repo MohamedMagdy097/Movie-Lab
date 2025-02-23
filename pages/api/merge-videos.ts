@@ -66,7 +66,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       mergedVideoUrl: mergeResult.public_url, // Use public URL for easy access
       mergedPath: mergeResult.merged_path, // Local path for reference if needed
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error merging videos:", error);
     return res.status(500).json({ error: error.message || "Failed to merge videos" });
   }

@@ -49,7 +49,7 @@ export default function MergeTest() {
         mergedPath: data.mergedPath,
       });
     } catch (err) {
-      setError(err.message || 'An error occurred while merging videos');
+      setError(err instanceof Error ? err.message : 'An error occurred while merging videos');
     } finally {
       setIsLoading(false);
     }
