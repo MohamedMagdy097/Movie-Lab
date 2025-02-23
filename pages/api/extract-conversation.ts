@@ -1,18 +1,29 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import OpenAI from 'openai';
+import { getApiKeys } from '@/utils/api-keys'; 
+// API client will be initialized in the handler with the key from settings
 
-if (!process.env.OPENAI_API_KEY) {
-  throw new Error('OPENAI_API_KEY environment variable is not set');
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  try {
+    const { openaiKey } = await getApiKeys(req);
+
+    if (!openaiKey || openaiKey.trim() === '') {
+      return res.status(400).json({ error: 'OpenAI API key is not configured. Please set it in the settings.' });
+    }
+
+    const openai = new OpenAI({
+      apiKey: openaiKey,
+    });
+
+    return await processExtractConversation(req, res, openai);
+  } catch (error) {
+    console.error('Error in handler:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 }
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
+async function processExtractConversation(
+req: NextApiRequest, res: NextApiResponse, openai: OpenAI) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -31,14 +42,14 @@ export default async function handler(
       messages: [
         {
           role: "system",
-          content: "Extract only the conversation/dialogue from the given text. Return only the conversation, without any narration or description."
+          content: "Extract the conversation/dialogue from the given text. Return only the conversation, without any narration or description., if you receive only conversation return it as it is."
         },
         {
           role: "user",
           content: prompt
         }
       ],
-      temperature: 0.7,
+      temperature: 0.8,
     });
 
     const conversation = completion.choices[0].message.content;

@@ -1,14 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import OpenAI from 'openai';
 import { withBodyParser } from '@/lib/middleware';
-
-if (!process.env.OPENAI_API_KEY) {
-  throw new Error('OPENAI_API_KEY environment variable is not set');
-}
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { getApiKeys } from '@/utils/api-keys';
 
 export const config = {
   api: {
@@ -16,11 +9,7 @@ export const config = {
   },
 };
 
-
-async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
+async function processImageAnalysis(req: NextApiRequest, res: NextApiResponse, openai: OpenAI) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -87,6 +76,25 @@ async function handler(
   } catch (error) {
     console.error('Error analyzing image:', error);
     return res.status(500).json({ error: 'Failed to analyze image' });
+  }
+}
+
+async function handler(req: NextApiRequest, res: NextApiResponse) {
+  try {
+    const { openaiKey } = await getApiKeys(req);
+
+    if (!openaiKey || openaiKey.trim() === '') {
+      return res.status(400).json({ error: 'OpenAI API key is not configured. Please set it in the settings.' });
+    }
+
+    const openai = new OpenAI({
+      apiKey: openaiKey,
+    });
+
+    return await processImageAnalysis(req, res, openai);
+  } catch (error) {
+    console.error('Error in handler:', error);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
 

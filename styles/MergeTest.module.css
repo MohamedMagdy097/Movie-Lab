@@ -1,0 +1,126 @@
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.title {
+  font-size: 2rem;
+  margin-bottom: 2rem;
+  color: #333;
+}
+
+.form {
+  margin-bottom: 2rem;
+}
+
+.urlInputs {
+  margin-bottom: 1.5rem;
+}
+
+.inputGroup {
+  margin-bottom: 1rem;
+}
+
+.input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #0070f3;
+  box-shadow: 0 0 0 2px rgba(0, 112, 243, 0.1);
+}
+
+.input:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.primaryButton,
+.secondaryButton {
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.primaryButton {
+  background-color: #0070f3;
+  color: white;
+  border: none;
+  margin-top: 1rem;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background-color: #0051cc;
+}
+
+.primaryButton:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.secondaryButton {
+  background-color: white;
+  color: #0070f3;
+  border: 1px solid #0070f3;
+  margin-bottom: 1rem;
+}
+
+.secondaryButton:hover:not(:disabled) {
+  background-color: #f5f5f5;
+}
+
+.secondaryButton:disabled {
+  border-color: #ccc;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.error {
+  background-color: #fff5f5;
+  color: #e53e3e;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.success {
+  background-color: #f0fff4;
+  color: #38a169;
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.result {
+  margin-top: 2rem;
+}
+
+.result h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: #333;
+}
+
+.videoContainer {
+  margin: 1rem 0;
+}
+
+.video {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 4px;
+}
+
+.path {
+  color: #666;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+}

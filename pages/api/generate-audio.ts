@@ -1,25 +1,10 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { ElevenLabsClient } from 'elevenlabs';
 import OpenAI from 'openai';
+import { getApiKeys } from '@/utils/api-keys';
 
 
-if (!process.env.ELEVENLABS_API_KEY) {
-  throw new Error('ELEVENLABS_API_KEY environment variable is not set');
-}
-
-if (!process.env.OPENAI_API_KEY) {
-  throw new Error('OPENAI_API_KEY environment variable is not set');
-}
-
-const client = new ElevenLabsClient({
-  apiKey: process.env.ELEVENLABS_API_KEY,
-});
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-async function findMatchingVoice(gender: string, age: string) {
+async function findMatchingVoice(client: ElevenLabsClient, gender: string, age: string) {
   const response = await client.voices.getAll();
   const voices = response.voices;
   console.log('Available voices:', voices.map(v => ({ id: v.voice_id, name: v.name, labels: v.labels })));
@@ -82,7 +67,7 @@ export const config = {
   },
 };
 
-async function handler(req: NextApiRequest, res: NextApiResponse) {
+async function processAudioGeneration(req: NextApiRequest, res: NextApiResponse, client: ElevenLabsClient, openai: OpenAI, elevenLabsKey: string) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -166,7 +151,7 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
           analysis.age = analysis.age.toLowerCase();
           
           console.log('Image analysis for voice:', analysis);
-          const matchingVoice = await findMatchingVoice(analysis.gender, analysis.age);
+          const matchingVoice = await findMatchingVoice(client, analysis.gender, analysis.age);
           if (matchingVoice?.voice_id) {
             voiceId = matchingVoice.voice_id;
             console.log('Selected voice:', matchingVoice.name, matchingVoice.voice_id);
@@ -195,7 +180,7 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
         headers: {
           'Accept': 'audio/mpeg',
           'Content-Type': 'application/json',
-          'xi-api-key': process.env.ELEVENLABS_API_KEY!
+          'xi-api-key': elevenLabsKey
         },
         body: JSON.stringify({
           text: textToSpeak,
@@ -247,4 +232,29 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
   }
 }
 
-export default handler;
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  try {
+    const { elevenLabsKey, openaiKey } = await getApiKeys(req);
+
+    if (!elevenLabsKey) {
+      return res.status(400).json({ error: 'ElevenLabs API key is not configured. Please set it in the settings.' });
+    }
+
+    if (!openaiKey) {
+      return res.status(400).json({ error: 'OpenAI API key is not configured. Please set it in the settings.' });
+    }
+
+    const client = new ElevenLabsClient({
+      apiKey: elevenLabsKey,
+    });
+
+    const openai = new OpenAI({
+      apiKey: openaiKey,
+    });
+
+    return await processAudioGeneration(req, res, client, openai, elevenLabsKey);
+  } catch (error) {
+    console.error('Error in handler:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
