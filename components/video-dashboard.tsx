@@ -37,7 +37,7 @@ export function VideoDashboard() {
   const [mergedVideoUrl, setMergedVideoUrl] = useState<string>("");
   const [currentStep, setCurrentStep] = useState("")
   const [activeTab, setActiveTab] = useState("create")
-  type ValidDuration = "5" | "10"
+  type ValidDuration = "5" | "10" | "15"
   const [duration, setDuration] = useState<ValidDuration>("5")
   const [aspectRatio, setAspectRatio] = useState("16:9")
   const [loadingStates, setLoadingStates] = useState<{ [key: string]: boolean }>({})
@@ -559,17 +559,21 @@ const handleSubmit = async (e: React.FormEvent) => {
                             value={duration}
                             onValueChange={(value: ValidDuration) => {
                               setDuration(value)
-                              const numScenes = Number.parseInt(value) / 5
+                              const numScenes = Math.min(4, Number.parseInt(value) / 5);
                               setPrompts(Array(numScenes).fill(""))
                               setSubtitles(Array(numScenes).fill(""))
+                              
                             }}
                           >
                             <SelectTrigger className="bg-gray-700 border-gray-600 text-gray-200">
                               <SelectValue placeholder="Select duration" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="5">5 seconds</SelectItem>
-                              <SelectItem value="10">10 seconds</SelectItem>
+                            <SelectItem value="5">5 seconds</SelectItem>
+<SelectItem value="10">10 seconds</SelectItem>
+<SelectItem value="15">15 seconds</SelectItem>
+<SelectItem value="20">20 seconds</SelectItem>
+
                             </SelectContent>
                           </Select>
                         </div>
@@ -597,7 +601,7 @@ const handleSubmit = async (e: React.FormEvent) => {
               </motion.div>
 
               <AnimatePresence>
-                {Array.from({ length: Number.parseInt(duration) / 5 }).map((_, index) => (
+              {Array.from({ length: Math.min(4, Number.parseInt(duration) / 5) }).map((_, index) => (
                   <motion.div key={index} variants={itemVariants} initial="hidden" animate="visible" exit="hidden">
                     <Card className="bg-gray-800/50 border-gray-700 backdrop-blur-sm overflow-hidden">
                       <CardHeader className="pb-4">
