@@ -259,7 +259,6 @@ export function VideoDashboard() {
 
         console.log("🛜 API Response Status:", response.status);
         const responseData = await response.json();
-        console.log("📩 API Response Data:", responseData);
 
         if (!response.ok) throw new Error(responseData.error || `Failed to generate ${type}`);
 
@@ -274,9 +273,13 @@ export function VideoDashboard() {
             newSubtitles[index] = responseData.subtitles;
             setSubtitles(newSubtitles);
         }
-    } catch (error) {
+    } catch (error: any) {
         console.error(`❌ Error getting ${type}:`, error);
-        alert(`Failed to generate ${type}`);
+        toast({
+            variant: "destructive",
+            title: "Generation Error",
+            description: error.message || `Failed to generate ${type}. ${error.error || ''}`
+        });
     } finally {
         setLoadingStates((prev) => ({ ...prev, [stateKey]: false }));
     }
@@ -480,6 +483,22 @@ const handleSubmit = async (e: React.FormEvent) => {
           <p className="text-xl text-gray-400 max-w-2xl mx-auto">
             Transform your ideas into cinematic experiences with AI-powered video generation
           </p>
+          <div className="mt-6 grid gap-4 md:grid-cols-2 max-w-4xl mx-auto">
+            <div className="flex items-start gap-3 p-4 rounded-lg bg-gray-800/50 border border-gray-700/50 backdrop-blur-sm">
+              <Clock className="h-5 w-5 text-blue-400 mt-1 flex-shrink-0" />
+              <div>
+                <p className="font-medium text-gray-200 text-sm">Generation Time</p>
+                <p className="text-gray-400 text-sm">Please allow 5-15 minutes for video generation, depending on the number of scenes.</p>
+              </div>
+            </div>
+            <div className="flex items-start gap-3 p-4 rounded-lg bg-gray-800/50 border border-gray-700/50 backdrop-blur-sm">
+              <Settings className="h-5 w-5 text-blue-400 mt-1 flex-shrink-0" />
+              <div>
+                <p className="font-medium text-gray-200 text-sm">API Keys (Optional)</p>
+                <p className="text-gray-400 text-sm">You don't need to set up API keys to start. Only configure them in settings if you face any generation errors.</p>
+              </div>
+            </div>
+          </div>
           </div>
           <SettingsModal />
         </motion.div>
@@ -795,4 +814,3 @@ const handleSubmit = async (e: React.FormEvent) => {
     </ToastProvider>
   )
 }
-
