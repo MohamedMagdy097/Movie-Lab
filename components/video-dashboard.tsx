@@ -477,9 +477,16 @@ const handleSubmit = async (e: React.FormEvent) => {
         <motion.div variants={itemVariants} className="flex items-center justify-between mb-10">
           <div className="text-center space-y-4 flex-1">
 
-          <h1 className="text-5xl sm:text-6xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-gray-200 to-gray-400">
-            MovieLab
-          </h1>
+          <div className="flex justify-center items-center mb-4">
+            <img
+              src="/MovieLab.png"
+              alt="MovieLab"
+              className="h-32 sm:h-48 w-auto filter brightness-110 hover:brightness-125 transition-all duration-300 cursor-pointer"
+              style={{
+                filter: 'drop-shadow(0 0 10px rgba(255, 255, 255, 0.2))',
+              }}
+            />
+          </div>
           <p className="text-xl text-gray-400 max-w-2xl mx-auto">
             Transform your ideas into cinematic experiences with AI-powered video generation
           </p>

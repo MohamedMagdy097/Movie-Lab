@@ -37,25 +37,10 @@ req: NextApiRequest, res: NextApiResponse, openai: OpenAI) {
 
     console.log('Received prompt:', prompt);
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "Extract the conversation/dialogue from the given text. Return only the conversation, without any narration or description., if you receive only conversation return it as it is."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      temperature: 0.8,
-    });
+    
+    console.log('Extracted conversation:', prompt);
 
-    const conversation = completion.choices[0].message.content;
-    console.log('Extracted conversation:', conversation);
-
-    return res.status(200).json({ conversation });
+    return res.status(200).json({ prompt });
   } catch (error) {
     console.error('Error extracting conversation:', error);
     return res.status(500).json({ error: 'Failed to extract conversation' });

@@ -4,11 +4,10 @@ import { getApiKeys } from '@/utils/api-keys';
 
 // API client will be initialized in the handler with the key from settings
 
-// Configure API options
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '10mb', // Adjust this based on your needs
+      sizeLimit: '10mb',
     },
   },
 };
@@ -30,6 +29,55 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
+const getPromptForScene = (sceneNumber: number, type: string, imageContext: string, totalScenes: number) => {
+  const isFinalScene = sceneNumber === totalScenes;
+  const isThirdSceneInFourScenes = totalScenes === 4 && sceneNumber === 3;
+
+  if (type === 'description') {
+    if (sceneNumber === 1) {
+      return `Based on this image: ${imageContext}\n\nYou are starting a short cinematic story. 
+      Generate a **compelling opening scene description** for a **5-second video clip** that sets up the mood and visual aesthetics. 
+      - Focus on establishing the setting, character presence, and an intriguing hook. 
+      - Describe how the camera moves and how the viewer is introduced to the scene.`;
+    } else if (sceneNumber === 2) {
+      return `Based on this image: ${imageContext}\n\n**Continuing from Scene 1**, generate a **5-second scene description** that naturally follows from the last frame.
+      - The camera should transition smoothly from **Scene 1's ending position**.
+      - Introduce **new actions, movement, or setting details** to develop the story.
+      - Maintain visual continuity and character focus.`;
+    } else if (isThirdSceneInFourScenes) {
+      return `Based on this image: ${imageContext}\n\n**Continuing from Scene 2**, generate a **5-second scene description** that builds towards the story's climax.
+      - The camera should naturally transition from **Scene 2's final moment**.
+      - The story should **intensify in tension or action**, leading to the climax.
+      - Maintain a smooth narrative flow while increasing emotional stakes.`;
+    } else if (isFinalScene) {
+      return `Based on this image: ${imageContext}\n\n**Final Scene - Bringing the story to a conclusion.** 
+      Generate a **5-second scene description** that provides a **satisfying resolution.**
+      - The camera should transition **smoothly from Scene ${sceneNumber - 1}'s ending.**
+      - Ensure the scene **ties up loose ends** and provides narrative closure.
+      - Maintain emotional depth while keeping visual continuity.`;
+    }
+  } else if (type === 'subtitles') {
+    if (sceneNumber === 1) {
+      return `Based on this image: ${imageContext}\n\nGenerate a **5-second, first-person spoken subtitle (10-15 words).**  
+      - The dialogue should **hook the viewer** and establish the **emotional tone** of the story.  
+      - The character should be speaking directly as if they are **experiencing the moment**.`;
+    } else if (sceneNumber === 2) {
+      return `Based on this image: ${imageContext}\n\n**Continuing from Scene 1**, generate a **5-second, first-person spoken subtitle (10-15 words).**  
+      - The speech should **flow naturally** from Scene 1's dialogue.  
+      - The character should **respond or react** to what happened previously.`;
+    } else if (isThirdSceneInFourScenes) {
+      return `Based on this image: ${imageContext}\n\n**Continuing from Scene 2**, generate a **5-second, first-person spoken subtitle (10-15 words).**  
+      - The dialogue should reflect the **climax or heightened tension** in the story.  
+      - The character should **express urgency, realization, or conflict.**`;
+    } else if (isFinalScene) {
+      return `Based on this image: ${imageContext}\n\n**Continuing from Scene ${sceneNumber - 1}**, generate a **5-second, first-person spoken subtitle (10-15 words).**  
+      - The dialogue should bring the **story to a satisfying conclusion**.  
+      - The character should express **resolution, understanding, or emotional closure**.`;
+    }
+  }
+
+  return ''; // Fallback in case of an invalid scene number or type
+};
 
 async function processSceneSuggestions(
   req: NextApiRequest,
@@ -43,22 +91,22 @@ async function processSceneSuggestions(
   try {
     const { sceneNumber, totalScenes, base64Image, type = 'both' } = req.body;
     const validatedSceneNumber = sceneNumber as 1 | 2 | 3 | 4;
-    console.log('Received request with type:', type);
 
     if (!sceneNumber || ![1, 2, 3, 4].includes(sceneNumber) || !totalScenes || !base64Image || !type) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    // First analyze the image
+    // Step 1: Extract image context
     const imageAnalysis = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
+      response_format: { type: "json_object" },
       messages: [
         {
           role: 'user',
           content: [
             {
               type: 'text',
-              text: 'Analyze this image and describe what you see in detail, including: the person\'s appearance, clothing, setting, and any notable objects or actions. Format as a brief paragraph.',
+              text: 'Analyze this image and describe what you see in detail, including: the person\'s appearance, clothing, setting, and any notable objects or actions. Return the description as a JSON object with a "description" field.',
             },
             {
               type: 'image_url',
@@ -69,107 +117,127 @@ async function processSceneSuggestions(
           ],
         },
       ],
-      max_tokens: 1000,
+      max_tokens: 500,
       temperature: 0.7,
     });
 
     const imageContext = imageAnalysis.choices[0].message.content || '';
-    console.log('Image analysis:', imageContext);
+    console.log('🔍 Image Context:', imageContext);
 
-    // Generate suggestions based on type and scene number
-    // Define scene-specific context prompts
+    // Scene-specific guidance
     const sceneContexts: Record<1 | 2 | 3 | 4, string> = {
-      1: "opening the story and establishing the initial setting and tone",
-      2: "continuing the narrative from the first scene, building on the established context",
-      3: totalScenes === 3 ? "bringing the story to a satisfying conclusion while maintaining continuity" : "developing the story further and building towards the climax",
-      4: "bringing the story to a satisfying conclusion with depth and resolution"
-    };
-    
-
-    const getPromptForScene = (sceneNumber: number, type: string, imageContext: string, totalScenes: number) => {
-      const isFinalScene = sceneNumber === totalScenes;
-      const isThirdSceneInFourScenes = totalScenes === 4 && sceneNumber === 3;
-
-      if (type === 'description') {
-        if (sceneNumber === 1) {
-          return `Based on this image: ${imageContext}\n\nYou are starting a short story. Generate a compelling opening scene description for a 5-second video clip that sets up an intriguing narrative. Focus on establishing the mood, setting, and a hint of what's to come. The scene should feel like the beginning of something interesting.`;
-        } else if (sceneNumber === 2) {
-          return `Based on this image: ${imageContext}\n\nContinuing directly from Scene 1, generate a 5-second scene description that advances the story. The camera should flow naturally from the previous scene's ending position. Focus on developing the narrative tension or emotional arc established in Scene 1.`;
-        } else if (isThirdSceneInFourScenes) {
-          return `Based on this image: ${imageContext}\n\nContinuing from Scene 2, generate a 5-second scene description that builds towards the story's climax. The camera should flow naturally from the previous scene, intensifying the narrative tension or emotional arc.`;
-        } else if (isFinalScene) {
-          return `Based on this image: ${imageContext}\n\nThis is the final scene of our story. Generate a 5-second scene description that brings the narrative to a satisfying conclusion. The camera should continue smoothly from the previous scene's ending, creating a natural progression that ties the story together.`;
-        }
-      } else if (type === 'subtitles') {
-        if (sceneNumber === 1) {
-          return `Based on this image: ${imageContext}\n\nCreate natural, engaging opening dialogue or narration (5 seconds, 10-15 words) that introduces our story. The dialogue should hook the viewer while establishing the scene's emotional tone.`;
-        } else if (sceneNumber === 2) {
-          return `Based on this image: ${imageContext}\n\nContinuing the conversation or narration from Scene 1, write the next line of dialogue (5 seconds, 10-15 words). The speech should flow naturally from the previous scene's dialogue, developing the story or emotional arc.`;
-        } else if (isThirdSceneInFourScenes) {
-          return `Based on this image: ${imageContext}\n\nContinuing the dialogue from Scene 2, write the next line (5 seconds, 10-15 words) that builds towards the story's climax. Maintain the established character voices and increase narrative tension.`;
-        } else if (isFinalScene) {
-          return `Based on this image: ${imageContext}\n\nWrite the concluding dialogue or narration (5 seconds, 10-15 words) that brings our story to a close. The speech should flow naturally from the previous scene while providing a satisfying conclusion.`;
-        }
-      } else {
-        if (sceneNumber === 1) {
-          return `Based on this image: ${imageContext}\n\nYou're creating the opening of a short story. Generate both:\n1. A compelling 5-second opening scene description that establishes an intriguing setting and mood\n2. Opening dialogue or narration (10-15 words) that hooks the viewer and sets up the story's tone\n\nFormat your response as a JSON object with 'sceneDescription' and 'subtitles' fields.`;
-        } else if (sceneNumber === 2) {
-          return `Based on this image: ${imageContext}\n\nContinuing our story from Scene 1, generate both:\n1. A 5-second scene description that naturally follows the previous scene's ending\n2. Dialogue or narration (10-15 words) that continues the conversation/story\n\nEnsure both elements maintain narrative flow and character voices.\n\nFormat your response as a JSON object with 'sceneDescription' and 'subtitles' fields.`;
-        } else if (isThirdSceneInFourScenes) {
-          return `Based on this image: ${imageContext}\n\nBuilding towards our story's climax, generate both:\n1. A 5-second scene description that intensifies the narrative tension\n2. Dialogue or narration (10-15 words) that builds anticipation\n\nMaintain consistency while escalating the story's emotional impact.\n\nFormat your response as a JSON object with 'sceneDescription' and 'subtitles' fields.`;
-        } else if (isFinalScene) {
-          return `Based on this image: ${imageContext}\n\nThis is our story's conclusion. Generate both:\n1. A 5-second scene description that brings the narrative to a satisfying close\n2. Final dialogue or narration (10-15 words) that provides a fitting conclusion\n\nEnsure both elements create a sense of resolution while maintaining consistency.\n\nFormat your response as a JSON object with 'sceneDescription' and 'subtitles' fields.`;
-        }
-      }
-      return '';
+      1: "opening the story and setting the tone with immersive visuals and dialogue",
+      2: "developing the story naturally, transitioning smoothly from Scene 1",
+      3: "building tension and advancing the story towards its peak",
+      4: "bringing the story to a satisfying conclusion while maintaining visual and narrative continuity",
     };
 
-    const promptContent = getPromptForScene(sceneNumber, type, imageContext, totalScenes);
+    const isFinalScene = sceneNumber === totalScenes;
 
+    // Generate scene description & subtitles
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
+      response_format: { type: "json_object" },
       messages: [
         {
           role: 'system',
-          content:
-            type === 'both'
-              ? `You are a master storyteller creating a cohesive 3-scene narrative. For Scene ${validatedSceneNumber}, you are ${sceneContexts[validatedSceneNumber]}. Your scene descriptions should create vivid imagery with smooth camera transitions, while your dialogue must feel natural and take exactly 5 seconds to speak (10-15 words). Focus on maintaining narrative flow and emotional continuity between scenes. Format your response as a JSON object with 'sceneDescription' and 'subtitles' fields.`
-              : type === 'description'
-                ? `You are a cinematographer crafting Scene ${validatedSceneNumber} of a continuous story. You are ${sceneContexts[validatedSceneNumber]}. Create a scene description that flows naturally from the previous scene's ending, with seamless camera movements that enhance the narrative. Your description should evoke clear imagery while maintaining the story's emotional arc. Respond with a scene description as plain text.`
-                : `You are a dialogue writer crafting Scene ${validatedSceneNumber} of a continuous story. You are ${sceneContexts[validatedSceneNumber]}. Your dialogue must continue naturally from the previous scene's conversation, maintaining character voices and emotional progression. Keep it concise - exactly 5 seconds when spoken (10-15 words). Respond with dialogue or narration as plain text.`,
+          content: `You are a master storyteller creating a cohesive ${totalScenes}-scene narrative. 
+          For Scene ${validatedSceneNumber}, you are ${sceneContexts[validatedSceneNumber]}. 
+
+          - Scene descriptions must create vivid imagery and smooth transitions.
+          - Subtitles MUST be **spoken in first-person**, natural, and take **exactly 5 seconds (10-15 words).**
+          - All responses MUST be formatted strictly as JSON.
+
+          **JSON Format:**
+          {
+            "sceneDescription": "A vivid description of the scene.",
+            "subtitles": "A spoken subtitle (10-15 words)."
+          }`,
         },
         {
           role: 'user',
-          content: promptContent,
+          content: `Based on this image context: "${imageContext}", generate Scene ${sceneNumber} of ${totalScenes}.
+
+          - Provide a 5-second scene description that continues from the previous scene.
+          - Create a 10-15 word spoken subtitle that flows naturally from the prior dialogue.
+
+          Return your response as a JSON object with the exact format specified above.`,
         },
       ],
       temperature: 0.7,
     });
 
     const content = completion.choices[0].message.content || '';
-    console.log('Scene suggestion response:', content);
+    console.log('🎬 Scene Suggestion Response:', content);
 
-    // Parse the response based on type
+    // Log raw content for debugging
+    console.log('\n=== RAW CONTENT ===');
+    console.log(content);
+    console.log('===================\n');
+
+    // Step 3: Parse response and retry if needed
     let suggestion;
-    if (type === 'both') {
-      try {
-        const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/{[\s\S]*}/);
-        const jsonStr = jsonMatch ? jsonMatch[1] || jsonMatch[0] : content;
-        suggestion = JSON.parse(jsonStr.trim());
-      } catch (error) {
-        console.error('Error parsing GPT response:', error);
-        return res.status(500).json({ error: 'Failed to parse scene suggestions' });
+    try {
+      const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/{[\s\S]*}/);
+      const jsonStr = jsonMatch ? jsonMatch[1] || jsonMatch[0] : content;
+      suggestion = JSON.parse(jsonStr.trim());
+      
+      console.log('\n=== PARSED SUGGESTION ===');
+      console.log('Scene Description:', suggestion.sceneDescription);
+      console.log('Subtitles:', suggestion.subtitles);
+      console.log('========================\n');
+
+      // Ensure valid response
+      if (!suggestion.sceneDescription || !suggestion.subtitles || suggestion.subtitles.trim() === '') {
+        throw new Error("Missing scene description or subtitles.");
       }
-    } else {
-      suggestion =
-        type === 'description'
-          ? { sceneDescription: content.trim() }
-          : { subtitles: content.trim() };
+    } catch (error) {
+      console.error('⚠️ Error parsing GPT response:', error);
+      return res.status(500).json({ error: 'Failed to parse scene suggestions' });
+    }
+
+    // Step 4: Ensure valid subtitles (retry if needed)
+    const maxRetries = 3;
+    const retryAttempt = (req.body.retryAttempt || 0) as number;
+
+    if (!suggestion.subtitles || suggestion.subtitles.trim() === '') {
+      console.error(`⚠️ Invalid subtitles (attempt ${retryAttempt + 1}):`, suggestion.subtitles);
+
+      if (retryAttempt < maxRetries) {
+        req.body = { ...req.body, retryAttempt: retryAttempt + 1 };
+        console.log(`🔄 Retrying subtitles generation (attempt ${retryAttempt + 1} of ${maxRetries})`);
+        return await processSceneSuggestions(req, res, openai);
+      } else {
+        console.log('⚠️ Max retries reached. Generating fallback subtitle.');
+
+        // Regenerate subtitles
+        const subtitlesCompletion = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: 'system',
+              content: `You are a dialogue writer for a short video. Respond with a JSON object in this format:
+              {
+                "sceneDescription": "A vivid, detailed description of the scene.",
+                "subtitles": "A natural spoken subtitle, exactly 5 seconds long (10-15 words)."
+              }`,
+            },
+            {
+              role: 'user',
+              content: `Based on this image context: "${imageContext}", regenerate missing subtitles for Scene ${sceneNumber}. Return as a JSON object with the format specified above.`,
+            },
+          ],
+          temperature: 0.7,
+        });
+
+        suggestion.subtitles = subtitlesCompletion.choices[0].message.content?.replace(/[`"'*#\n]/g, '').trim() || 'The journey begins here.';
+      }
     }
 
     return res.status(200).json(suggestion);
   } catch (error) {
-    console.error('Error generating scene suggestions:', error);
+    console.error('❌ Error generating scene suggestions:', error);
     return res.status(500).json({ error: 'Failed to generate scene suggestions' });
   }
 }

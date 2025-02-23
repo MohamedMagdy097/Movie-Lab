@@ -81,26 +81,8 @@ async function processAudioGeneration(req: NextApiRequest, res: NextApiResponse,
     }
     
     console.log('Received text for audio generation:', textToProcess);
-
-    // First, extract conversation using GPT-4
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "Extract only the conversation/dialogue from the given text. Return only the conversation, without any narration or description."
-        },
-        {
-          role: "user",
-          content: text
-        }
-      ],
-      temperature: 0.7,
-    });
-
-    const conversation = completion.choices[0].message.content;
-    console.log('Extracted conversation:', conversation);
-    const textToSpeak = conversation || textToProcess; // Fallback to original text if extraction fails
+    const textToSpeak = textToProcess; // Use the subtitle text directly
+    console.log('🔊 Text to be spoken:', textToSpeak);
 
     // Analyze the image to determine voice characteristics
     let voiceId = 'JBFqnCBsd6RMkjVDRZzb'; // Default voice

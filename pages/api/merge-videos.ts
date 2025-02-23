@@ -39,15 +39,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const videoMetadata = await Promise.all(urlValidationPromises);
 
-    // Merge the first two videos
     const mergeResponse = await fetch("https://video-merge.198.23.164.177.sslip.io/api/merge/merge-videos", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        url1: videoMetadata[0].url,
-        url2: videoMetadata[1].url,
+        urls: videoMetadata.map(vm => vm.url)
       }),
     });
 
@@ -63,8 +61,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     return res.status(200).json({
       message: "Videos merged successfully",
-      mergedVideoUrl: mergeResult.public_url, // Use public URL for easy access
-      mergedPath: mergeResult.merged_path, // Local path for reference if needed
+      mergedVideoUrl: mergeResult.public_url,
+      mergedPath: mergeResult.merged_path
     });
   } catch (error: any) {
     console.error("Error merging videos:", error);

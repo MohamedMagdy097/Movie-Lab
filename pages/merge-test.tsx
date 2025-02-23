@@ -17,7 +17,16 @@ export default function MergeTest() {
   };
 
   const handleAddUrl = () => {
-    setVideoUrls([...videoUrls, '']);
+    if (videoUrls.length < 4) {
+      setVideoUrls([...videoUrls, '']);
+    }
+  };
+
+  const handleRemoveUrl = (index: number) => {
+    if (videoUrls.length > 2) {
+      const newUrls = videoUrls.filter((_, i) => i !== index);
+      setVideoUrls(newUrls);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -71,16 +80,28 @@ export default function MergeTest() {
                 disabled={isLoading}
                 className={styles.input}
               />
+              {videoUrls.length > 2 && (
+                <button
+                  type="button"
+                  onClick={() => handleRemoveUrl(index)}
+                  disabled={isLoading}
+                  className={styles.removeButton}
+                >
+                  Remove
+                </button>
+              )}
             </div>
           ))}
-          <button
-            type="button"
-            onClick={handleAddUrl}
-            disabled={isLoading}
-            className={styles.secondaryButton}
-          >
-            Add Another URL
-          </button>
+          {videoUrls.length < 4 && (
+            <button
+              type="button"
+              onClick={handleAddUrl}
+              disabled={isLoading}
+              className={styles.secondaryButton}
+            >
+              Add Another URL ({videoUrls.length}/4)
+            </button>
+          )}
         </div>
 
         <button
