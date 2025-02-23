@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { ElevenLabsClient } from 'elevenlabs';
 import OpenAI from 'openai';
-import { withBodyParser } from '../../lib/middleware';
+
 
 if (!process.env.ELEVENLABS_API_KEY) {
   throw new Error('ELEVENLABS_API_KEY environment variable is not set');
@@ -76,7 +76,9 @@ async function findMatchingVoice(gender: string, age: string) {
 
 export const config = {
   api: {
-    bodyParser: false, // Disable the default body parser
+    bodyParser: {
+      sizeLimit: '10mb' // For handling base64 images
+    },
   },
 };
 
@@ -86,11 +88,14 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
   }
 
   try {
-    const { text, imageUrl } = req.body;
+    const { text, prompt, base64Image } = req.body;
+    const textToProcess = text || prompt;
 
-    if (!text) {
-      return res.status(400).json({ error: 'Text is required' });
+    if (!textToProcess) {
+      return res.status(400).json({ error: 'Text or prompt is required' });
     }
+    
+    console.log('Received text for audio generation:', textToProcess);
 
     // First, extract conversation using GPT-4
     const completion = await openai.chat.completions.create({
@@ -110,26 +115,64 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
 
     const conversation = completion.choices[0].message.content;
     console.log('Extracted conversation:', conversation);
-    const textToSpeak = conversation || text; // Fallback to original text if extraction fails
+    const textToSpeak = conversation || textToProcess; // Fallback to original text if extraction fails
 
     // Analyze the image to determine voice characteristics
     let voiceId = 'JBFqnCBsd6RMkjVDRZzb'; // Default voice
     
-    const { base64Image } = req.body;
     if (base64Image) {
       try {
-        const analysisResponse = await fetch('http://localhost:3000/api/analyze-image', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ base64Image })
+        const imageAnalysisResponse = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "user",
+              content: [
+                { 
+                  type: "text", 
+                  text: "Analyze this image and tell me ONLY two things: 1) the gender (respond with exactly 'male' or 'female'), and 2) the approximate age category (respond with exactly 'young', 'middle', or 'old'). Format your response as a valid JSON object with exactly these two fields: {\"gender\": \"male|female\", \"age\": \"young|middle|old\"}" 
+                },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:image/jpeg;base64,${base64Image}`
+                  }
+                }
+              ]
+            }
+          ],
+          max_tokens: 1000,
+          temperature: 0
         });
 
-        if (analysisResponse.ok) {
-          const analysis = await analysisResponse.json();
+        const content = imageAnalysisResponse.choices[0].message.content || '';
+        console.log('GPT-4 Vision response:', content);
+
+        try {
+          // Extract JSON from markdown if present
+          const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/{[\s\S]*}/);
+          const jsonStr = jsonMatch ? jsonMatch[1] || jsonMatch[0] : content;
+          const analysis = JSON.parse(jsonStr.trim());
+          
+          // Validate the response format
+          if (!analysis.gender || !analysis.age || 
+              !['male', 'female'].includes(analysis.gender.toLowerCase()) || 
+              !['young', 'middle', 'old'].includes(analysis.age.toLowerCase())) {
+            throw new Error('Invalid response format');
+          }
+
+          // Normalize the response
+          analysis.gender = analysis.gender.toLowerCase();
+          analysis.age = analysis.age.toLowerCase();
+          
           console.log('Image analysis for voice:', analysis);
           const matchingVoice = await findMatchingVoice(analysis.gender, analysis.age);
-          voiceId = matchingVoice.voice_id;
-          console.log('Selected voice:', matchingVoice.name, matchingVoice.voice_id);
+          if (matchingVoice?.voice_id) {
+            voiceId = matchingVoice.voice_id;
+            console.log('Selected voice:', matchingVoice.name, matchingVoice.voice_id);
+          }
+        } catch (parseError) {
+          console.error('Error parsing GPT-4 Vision response:', parseError);
         }
       } catch (error) {
         console.error('Error analyzing image for voice selection:', error);
@@ -138,34 +181,70 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
 
     console.log('Generating audio for text:', textToSpeak);
     
-    const response = await client.textToSpeech.convertAsStream(voiceId, {
-      text: textToSpeak,
-      model_id: 'eleven_multilingual_v2',
-      output_format: 'mp3_44100_128',
-      voice_settings: {
-        stability: 0.5,
-        similarity_boost: 0.75,
-        style: 0,
-        use_speaker_boost: true
-      }
-    });
-
-    // Convert stream to buffer
-    const chunks: Buffer[] = [];
-    for await (const chunk of response) {
-      chunks.push(Buffer.from(chunk));
+    if (!voiceId) {
+      console.error('No valid voice ID found');
+      return res.status(500).json({ error: 'Failed to select appropriate voice' });
     }
-    const audioBuffer = Buffer.concat(chunks);
-    const audioBase64 = audioBuffer.toString('base64');
-    console.log('Audio generated successfully, size:', audioBuffer.length, 'bytes');
 
-    return res.status(200).json({
-      audio: audioBase64
-    });
+    try {
+      console.log('Starting audio generation for text:', textToSpeak);
+      
+      // Generate audio using ElevenLabs API directly for better control
+      const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'audio/mpeg',
+          'Content-Type': 'application/json',
+          'xi-api-key': process.env.ELEVENLABS_API_KEY!
+        },
+        body: JSON.stringify({
+          text: textToSpeak,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+            style: 1.0,
+            use_speaker_boost: true
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('ElevenLabs API error:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        });
+        throw new Error(`Failed to generate audio: ${response.status} ${response.statusText}`);
+      }
+
+      console.log('Audio generated successfully, converting to base64...');
+      const audioBuffer = await response.arrayBuffer();
+      
+      if (!audioBuffer || audioBuffer.byteLength === 0) {
+        throw new Error('Received empty audio buffer from API');
+      }
+      
+      const audioBase64 = Buffer.from(audioBuffer).toString('base64');
+      console.log('Audio converted to base64, size:', audioBase64.length);
+
+      if (!audioBase64) {
+        console.error('No audio data generated');
+        return res.status(500).json({ error: 'No audio data generated' });
+      }
+
+      return res.status(200).json({
+        audio: audioBase64
+      });
+    } catch (audioError) {
+      console.error('Error generating audio stream:', audioError);
+      return res.status(500).json({ error: 'Failed to generate audio stream' });
+    }
   } catch (error) {
     console.error('Error generating audio:', error);
     return res.status(500).json({ error: 'Failed to generate audio' });
   }
 }
 
-export default withBodyParser(handler);
+export default handler;

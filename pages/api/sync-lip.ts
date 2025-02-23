@@ -50,7 +50,7 @@ export default async function handler(
     console.log('Lip sync completed:', result.data);
 
     return res.status(200).json({
-      syncedVideo: result.data.video
+      syncedVideo: result.data.video.url
     });
   } catch (error) {
     console.error('Error in lip sync:', error);
