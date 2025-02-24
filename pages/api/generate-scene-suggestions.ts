@@ -37,42 +37,51 @@ const getPromptForScene = (sceneNumber: number, type: string, imageContext: stri
     if (sceneNumber === 1) {
       return `Based on this image: ${imageContext}\n\nYou are starting a short cinematic story. 
       Generate a **compelling opening scene description** for a **5-second video clip** that sets up the mood and visual aesthetics. 
-      - Focus on establishing the setting, character presence, and an intriguing hook. 
-      - Describe how the camera moves and how the viewer is introduced to the scene.`;
+      - Focus on establishing the environment's atmosphere: lighting, colors, textures, and spatial layout.
+      - Describe the subject's positioning and presence within the frame.
+      - Detail key visual elements and their arrangement that enhance the storytelling.
+      - Include precise camera movements that introduce the viewer to this scene.`;
     } else if (sceneNumber === 2) {
-      return `Based on this image: ${imageContext}\n\n**Continuing from Scene 1**, generate a **5-second scene description** that naturally follows from the last frame.
-      - The camera should transition smoothly from **Scene 1's ending position**.
-      - Introduce **new actions, movement, or setting details** to develop the story.
-      - Maintain visual continuity and character focus.`;
+      return `Based on this image: ${imageContext}\n\n**Continuing from Scene 1**, generate a **5-second scene description** that deepens the narrative.
+      - Begin exactly where Scene 1 ended, maintaining visual continuity.
+      - Show how the subject's interaction with their environment evolves.
+      - Reveal new details about the setting or elements that weren't visible before.
+      - Describe meaningful movements or actions that develop the story.`;
     } else if (isThirdSceneInFourScenes) {
-      return `Based on this image: ${imageContext}\n\n**Continuing from Scene 2**, generate a **5-second scene description** that builds towards the story's climax.
-      - The camera should naturally transition from **Scene 2's final moment**.
-      - The story should **intensify in tension or action**, leading to the climax.
-      - Maintain a smooth narrative flow while increasing emotional stakes.`;
+      return `Based on this image: ${imageContext}\n\n**Continuing from Scene 2**, generate a **5-second scene description** that elevates the story's energy.
+      - Focus on how the lighting and atmosphere shift to create anticipation.
+      - Detail the subject's movements and interactions with their surroundings.
+      - Show how the environment complements the subject's actions.
+      - Create a sense of building momentum in the scene.`;
     } else if (isFinalScene) {
-      return `Based on this image: ${imageContext}\n\n**Final Scene - Bringing the story to a conclusion.** 
-      Generate a **5-second scene description** that provides a **satisfying resolution.**
-      - The camera should transition **smoothly from Scene ${sceneNumber - 1}'s ending.**
-      - Ensure the scene **ties up loose ends** and provides narrative closure.
-      - Maintain emotional depth while keeping visual continuity.`;
+      return `Based on this image: ${imageContext}\n\n**Final Scene - Creating a powerful conclusion.** 
+      Generate a **5-second scene description** that brings the story full circle.
+      - Connect visually to Scene ${sceneNumber - 1}'s energy while elevating the mood.
+      - Detail how the scene's composition has evolved from the first scene.
+      - Show how all visual elements come together for impact.
+      - End with a camera movement that captures the scene's final message.`;
     }
   } else if (type === 'subtitles') {
     if (sceneNumber === 1) {
-      return `Based on this image: ${imageContext}\n\nGenerate a **5-second, first-person spoken subtitle (10-15 words).**  
-      - The dialogue should **hook the viewer** and establish the **emotional tone** of the story.  
-      - The character should be speaking directly as if they are **experiencing the moment**.`;
+      return `Based on this image: ${imageContext}\n\nGenerate a **5-second, first-person spoken subtitle (10-15 words)** that:
+      - Introduces the speaker and their purpose
+      - Hints at what's to come in the video
+      - Creates intrigue about the subject matter`;
     } else if (sceneNumber === 2) {
-      return `Based on this image: ${imageContext}\n\n**Continuing from Scene 1**, generate a **5-second, first-person spoken subtitle (10-15 words).**  
-      - The speech should **flow naturally** from Scene 1's dialogue.  
-      - The character should **respond or react** to what happened previously.`;
+      return `Based on this image: ${imageContext}\n\n**Continuing from Scene 1**, generate a **5-second, first-person spoken subtitle (10-15 words)** that:
+      - Builds on the opening message
+      - Begins revealing key information or insights
+      - Shows growing engagement with the viewer`;
     } else if (isThirdSceneInFourScenes) {
-      return `Based on this image: ${imageContext}\n\n**Continuing from Scene 2**, generate a **5-second, first-person spoken subtitle (10-15 words).**  
-      - The dialogue should reflect the **climax or heightened tension** in the story.  
-      - The character should **express urgency, realization, or conflict.**`;
+      return `Based on this image: ${imageContext}\n\n**Continuing from Scene 2**, generate a **5-second, first-person spoken subtitle (10-15 words)** that:
+      - Demonstrates deeper understanding of the subject
+      - Shares a specific insight or observation
+      - Builds anticipation for the conclusion`;
     } else if (isFinalScene) {
-      return `Based on this image: ${imageContext}\n\n**Continuing from Scene ${sceneNumber - 1}**, generate a **5-second, first-person spoken subtitle (10-15 words).**  
-      - The dialogue should bring the **story to a satisfying conclusion**.  
-      - The character should express **resolution, understanding, or emotional closure**.`;
+      return `Based on this image: ${imageContext}\n\n**Continuing from Scene ${sceneNumber - 1}**, generate a **5-second, first-person spoken subtitle (10-15 words)** that:
+      - Delivers on the video's promise
+      - Provides valuable takeaways for viewers
+      - Creates a memorable final impression`;
     }
   }
 
@@ -135,6 +144,10 @@ async function processSceneSuggestions(
     const isFinalScene = sceneNumber === totalScenes;
 
     // Generate scene description & subtitles
+    // Generate scene description using getPromptForScene
+    const descriptionPrompt = getPromptForScene(validatedSceneNumber, 'description', imageContext, totalScenes);
+    const subtitlesPrompt = getPromptForScene(validatedSceneNumber, 'subtitles', imageContext, totalScenes);
+
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       response_format: { type: "json_object" },
@@ -156,12 +169,11 @@ async function processSceneSuggestions(
         },
         {
           role: 'user',
-          content: `Based on this image context: "${imageContext}", generate Scene ${sceneNumber} of ${totalScenes}.
+          content: `${descriptionPrompt}
 
-          - Provide a 5-second scene description that continues from the previous scene.
-          - Create a 10-15 word spoken subtitle that flows naturally from the prior dialogue.
+${subtitlesPrompt}
 
-          Return your response as a JSON object with the exact format specified above.`,
+Return your response as a JSON object with the exact format specified above.`,
         },
       ],
       temperature: 0.7,
