@@ -119,34 +119,71 @@ export function VideoDashboard() {
   };
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0]
-
-      // Compression options
-      const options = {
-        maxSizeMB: 1,
-        maxWidthOrHeight: 1920,
-        useWebWorker: true,
-      }
-
-      try {
-        const compressedFile = await imageCompression(file, options)
-        setImage(compressedFile)
-
-        // Create preview
-        const reader = new FileReader()
-        reader.onload = (e) => {
-          if (e.target?.result) {
-            setImagePreview(e.target.result as string)
-          }
+    try {
+      if (e.target.files && e.target.files[0]) {
+        const file = e.target.files[0];
+        
+        // Validate file size before compression
+        if (file.size > 20 * 1024 * 1024) { // 20MB limit
+          toast({
+            title: "File too large",
+            description: "Please select an image smaller than 20MB",
+            variant: "destructive"
+          });
+          return;
         }
-        reader.readAsDataURL(compressedFile)
-      } catch (error) {
-        console.error("Error compressing image:", error)
-        alert("Error compressing image. Please try again with a different image.")
+
+        setLoading(true);
+        
+        // More mobile-friendly compression options
+        const options = {
+          maxSizeMB: 1,
+          maxWidthOrHeight: 1920,
+          useWebWorker: false, // Disable web workers for better mobile compatibility
+          initialQuality: 0.7, // Slightly reduce initial quality for faster processing
+        };
+
+        try {
+          const compressedFile = await imageCompression(file, options);
+          setImage(compressedFile);
+
+          // Create preview using a promise-based approach
+          const createPreview = () => {
+            return new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = (e) => resolve(e.target?.result);
+              reader.onerror = (e) => reject(e);
+              reader.readAsDataURL(compressedFile);
+            });
+          };
+
+          const previewUrl = await createPreview();
+          setImagePreview(previewUrl as string);
+          
+          toast({
+            title: "Image uploaded successfully",
+            description: "Your image has been processed and is ready for video generation.",
+          });
+        } catch (error) {
+          console.error("Error processing image:", error);
+          toast({
+            title: "Error processing image",
+            description: "Please try again with a different image or refresh the page.",
+            variant: "destructive"
+          });
+        }
       }
+    } catch (error) {
+      console.error("Error handling image:", error);
+      toast({
+        title: "Upload failed",
+        description: "There was an error uploading your image. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
     }
-  }
+  };
 
   const processScene = async (sceneIndex: number, inputImage: string, subtitle: string, prompt: string) => {
     try {
@@ -540,7 +577,13 @@ const handleSubmit = async (e: React.FormEvent) => {
                     <div className="grid gap-6">
                       <div
                         onClick={() => document.getElementById("file-upload")?.click()}
+                        onTouchEnd={(e) => {
+                          e.preventDefault();
+                          document.getElementById("file-upload")?.click();
+                        }}
                         className="cursor-pointer relative border-2 border-dashed border-gray-600 rounded-lg p-12 text-center hover:border-gray-500 transition-colors duration-300"
+                        role="button"
+                        tabIndex={0}
                       >
                         {imagePreview ? (
                           <div className="relative aspect-video rounded-lg overflow-hidden">
